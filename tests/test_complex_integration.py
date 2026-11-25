@@ -2,6 +2,7 @@ from src.manager import Manager
 from src.models import Parameters
 from src.models import Bill
 from src.models import ApartmentSettlement
+from src.models import Tenant, TenantSettlement
 import pytest
 
 def test_apartment_costs_invalid_month():
@@ -91,3 +92,51 @@ def test_create_apartment_settlement():
 
     settlement_missing = manager.create_apartment_settlement("nie-istnieje", 2025, 1)
     assert settlement_missing is None
+
+def test_create_tenant_settlements():
+    manager = Manager(Parameters())
+
+    settlement_2025_jan = manager.create_apartment_settlement("apart-polanka", 2025, 1)
+    tenant_settlements_empty = manager.create_tenant_settlements(settlement_2025_jan)
+    assert isinstance(tenant_settlements_empty, list)
+    assert len(tenant_settlements_empty) == 0
+
+    manager.bills.append(
+        Bill(
+            amount_pln=900.0,
+            date_due="2024-02-10",
+            apartment="apart-polanka",
+            settlement_year=2024,
+            settlement_month=1,
+            type="electricity",
+        )
+    )
+    settlement_2024_jan = manager.create_apartment_settlement("apart-polanka", 2024, 1)
+    tenant_settlements_three = manager.create_tenant_settlements(settlement_2024_jan)
+    assert len(tenant_settlements_three) == 3
+    assert all(isinstance(ts, TenantSettlement) for ts in tenant_settlements_three)
+    assert {ts.tenant for ts in tenant_settlements_three} == {
+        "tenant-1",
+        "tenant-2",
+        "tenant-3",
+    }
+    for ts in tenant_settlements_three:
+        assert ts.bills_pln == 300.0
+        assert ts.total_due_pln == 300.0
+        assert ts.balance_pln == -300.0
+
+    manager.tenants["tenant-4"] = Tenant(
+        name="Anna Zielińska",
+        apartment="apart-polanka",
+        room="room-bigger",
+        rent_pln=1600.0,
+        deposit_pln=3000.0,
+        date_agreement_from="2025-01-01",
+        date_agreement_to="2025-12-31",
+    )
+    tenant_settlements_one = manager.create_tenant_settlements(settlement_2025_jan)
+    assert len(tenant_settlements_one) == 1
+    assert tenant_settlements_one[0].tenant == "tenant-4"
+    assert tenant_settlements_one[0].bills_pln == 910.0
+    assert tenant_settlements_one[0].total_due_pln == 910.0
+    assert tenant_settlements_one[0].balance_pln == -910.0
